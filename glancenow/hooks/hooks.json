@@ -1,0 +1,46 @@
+{
+  "description": "GlanceNow：会話の始まり・質問を送った時・返事が終わった時に、画面の元データを新しくする",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook 2>/dev/null || python \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook 2>/dev/null || true",
+            "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook scan 2>/dev/null || python \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook scan 2>/dev/null || true",
+            "timeout": 300,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook 2>/dev/null || python \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook 2>/dev/null || true",
+            "timeout": 30,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook 2>/dev/null || python \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook 2>/dev/null || true",
+            "timeout": 30,
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}

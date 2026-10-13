@@ -1,0 +1,14 @@
+{
+  "name": "glancenow",
+  "description": "GlanceNow：作業フォルダ（部屋）ごとの今を、1枚の画面にまとめて出すプラグイン",
+  "owner": {
+    "name": "GlanceNow"
+  },
+  "plugins": [
+    {
+      "name": "glancenow",
+      "source": "./glancenow",
+      "description": "作業フォルダ（部屋）ごとの今を、1枚の画面にまとめて出す。画面は会話の区切りで自動で作り直す。"
+    }
+  ]
+}

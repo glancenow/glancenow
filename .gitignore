@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+
+# 作っている間だけ置く安全の印（配る物には入れない）
+.devguard
+.devguard.log
