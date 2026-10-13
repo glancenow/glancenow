@@ -158,7 +158,7 @@ html[data-off~="status"][data-off~="next"] .norecord { display: none; }
   font-size: 0.8rem; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums;
 }
 .block .about { margin-left: 10px; font-size: 0.8rem; color: var(--muted); }
-.block .empty { margin: 10px 0 0; font-size: 0.88rem; color: var(--muted); }
+.block .empty, .block .older { margin: 10px 0 0; font-size: 0.88rem; color: var(--muted); }
 .block > details > summary { cursor: pointer; }
 
 /* 状態の印（形・文字・色の3つで見分ける） */

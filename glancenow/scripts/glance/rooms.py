@@ -7,12 +7,57 @@
 import hashlib
 import json
 import os
+import tempfile
 import time
 
 from . import paths, util
 
 VERSION = 1
 ACTIVE_STEP = 60  # 秒。「最後に動いた日時」は、これより細かくは書き直さない
+
+_temp_roots = None
+
+
+def temp_roots():
+    """OS の一時フォルダの場所（このPCで分かる物を全部）。比べやすい形にそろえて返す。"""
+    global _temp_roots
+    if _temp_roots is not None:
+        return _temp_roots
+    candidates = [tempfile.gettempdir()]
+    candidates += [os.environ.get(name) or "" for name in ("TMPDIR", "TEMP", "TMP")]
+    if os.name == "nt":
+        for name, tail in (("LOCALAPPDATA", "Temp"), ("SystemRoot", "Temp")):
+            base = os.environ.get(name) or ""
+            if base:
+                candidates.append(os.path.join(base, tail))
+    else:
+        candidates += ["/tmp", "/var/tmp", "/private/tmp", "/private/var/tmp", "/var/folders", "/private/var/folders"]
+    found = []
+    for candidate in candidates:
+        if not candidate.strip():
+            continue
+        forms = [candidate]
+        try:
+            forms.append(os.path.realpath(candidate))  # 短い名前（8.3 形式）やリンクを、本当の場所に直した形
+        except OSError:
+            pass
+        for form in forms:
+            normal = os.path.normcase(os.path.normpath(form))
+            if len(normal.rstrip("\\/")) > 2 and normal not in found:  # ドライブや / そのものは入れない
+                found.append(normal)
+    _temp_roots = found
+    return found
+
+
+def is_temp(path):
+    """その場所が、OS の一時フォルダか、その下にあるか。場所が分からない部屋は False。"""
+    if not path:
+        return False
+    normal = os.path.normcase(os.path.normpath(path))
+    for root in temp_roots():
+        if normal == root or normal.startswith(root.rstrip("\\/") + os.sep):
+            return True
+    return False
 
 
 def room_id(path):

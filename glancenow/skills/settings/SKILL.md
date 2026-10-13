@@ -44,4 +44,5 @@ allowed-tools:
 | shop-site を隠して | `rooms.hide=<今の一覧>,shop-site` |
 | shop-site を「お店のサイト」と出して | `rooms.names.shop-site=お店のサイト` |
 | 全部の部屋を載せて | `rooms.show=all` |
+| 一時フォルダの部屋も載せて | `rooms.show_temp=true` |
 | 最後に頼んだ文は出さないで | `items.last_prompt=false` |

@@ -44,7 +44,7 @@ def main():
     entry = [sys.executable, str(SCRIPTS / "glancenow.py")]
 
     import make_dummy
-    from glance import config, guide, scan, state
+    from glance import config, guide, rooms as rooms_module, scan, state
 
     expected = make_dummy.build(dummy)
     first = expected["rooms"][0]
@@ -203,9 +203,25 @@ def main():
     check("rooms → 番号つきの一覧と、30日以内の数・全部の数", code == 0 and len(lines) == len(expected["rooms"]) == 7
           and "見つけた部屋 7（この30日に動いた部屋 5）" in said and all("id=" in line for line in lines), said[:200])
     check("rooms は最後に動いた順", lines[0].startswith("1. %s｜" % os.path.basename(first["path"])), lines[:1])
+    check("一時フォルダの下の部屋が無い時は、その知らせを出さない", "一時フォルダ" not in said, said[-200:])
+
+    # OS の一時フォルダの下で会話をした部屋が、1つある時
+    temp_room = os.path.join(tempfile.gettempdir(), "glancenow-temp-room")
+    rooms_module.touch(temp_room, exact=True)
+    code, said = run("rooms")
+    lines = [line for line in said.splitlines() if re.match(r"^\d+\. ", line)]
+    check("rooms → 一時フォルダの下の部屋は、一覧にも数にも入れず、数を1行で出す", len(lines) == 7 and "glancenow-temp-room" not in said
+          and "見つけた部屋 7（この30日に動いた部屋 5）" in said and "一時フォルダの下の部屋 1 は、載せていません" in said, said[-300:])
 
     code, said = run("setup-done")
     check("setup-done → 画面ができる", code == 0 and (home / "glancenow.html").exists())
+    check("setup-done → 載せなかった一時フォルダの部屋の数を出す（最初の質問の終わりの文に使う）",
+          "一時フォルダの下の部屋 1 は、載せていません" in said, said)
+    run("config-set", "rooms.show_temp=true")
+    code, said = run("rooms")
+    check("rooms.show_temp=true → 一覧と数に入り、知らせは出ない", "見つけた部屋 8（この30日に動いた部屋 6）" in said
+          and "glancenow-temp-room" in said and "載せていません" not in said, said[:200])
+    run("config-set", "rooms.show_temp=false")
     out = hook(source="startup")
     check("質問が済んだあとは、案内を出さない", out == "" and not last_marks(), last_marks())
     code, said = run("guide")
@@ -236,6 +252,20 @@ def main():
         for name, found in front.items()))
     check("スキルの本文は、道具の場所を ${CLAUDE_PLUGIN_ROOT} で指す", all(
         'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py"' in text.split("---", 2)[2] for text in skills.values()))
+
+    body = {name: text.split("---", 2)[2] if text.count("---") >= 2 else "" for name, text in skills.items()}
+    check("checkpoint：ほかの「区切り」を先に済ませる順番が、説明と本文の両方にある", bool(front["checkpoint"])
+          and "先に全部済ませてから、最後にこれを使う" in front["checkpoint"].group(1)
+          and "ほかの方の手順を、先に全部済ませる" in body["checkpoint"] and "最後に、このスキルの手順で1行を書く" in body["checkpoint"])
+    check("setup：6つの質問の前に「全部おまかせ／1つずつ答える」を聞く", "全部おまかせ（標準で作る）" in body["setup"]
+          and "1つずつ答える（6問）" in body["setup"]
+          and body["setup"].index("全部おまかせ（標準で作る）") < body["setup"].index("**1問目 載せる部屋**"))
+    check("setup：途中の「おすすめで」は、その問いだけ標準にして次へ進む", "その問いだけを「標準のまま」として入れ、次の問いへ進む" in body["setup"])
+    check("setup：終わりの文に、タブの1行と、載せなかった一時フォルダの部屋の数の1行がある",
+          "ブラウザの窓に、GlanceNow のタブが足されています。見当たらない時は、このファイルを開いてください" in body["setup"]
+          and "一時フォルダの ◯ 部屋は載せていません" in body["setup"]
+          and (glancenow.TEMP_OUT_LINE % 3).startswith("一時フォルダの下の部屋 3 は、載せていません")
+          and "一時フォルダの下の部屋 ◯ は、載せていません" in body["setup"])
 
     docs = (PLUGIN / "docs" / "設定の書き方.md").read_text(encoding="utf-8")
     written = "\n".join(list(skills.values()) + [docs])

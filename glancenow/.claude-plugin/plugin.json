@@ -1,6 +1,6 @@
 {
   "name": "glancenow",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "作業フォルダ（部屋）ごとの今を、1枚の画面にまとめて出す。画面は会話の区切りで自動で作り直す。",
   "author": {
     "name": "GlanceNow"

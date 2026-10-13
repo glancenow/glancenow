@@ -74,6 +74,15 @@ def main():
     check("子エージェントの記録だけのフォルダは部屋に入らない",
           all(room.get("project") != expected["not_a_room"] for room in found.values()))
 
+    # --- OS の一時フォルダの下かどうかを見分ける ---
+    temp = tempfile.gettempdir()
+    inside = os.path.join(temp, "some-room", "src")
+    check("一時フォルダと、その下の場所を見分ける", rooms.is_temp(temp) and rooms.is_temp(inside)
+          and (os.name != "nt" or rooms.is_temp(inside.upper())), repr(rooms.temp_roots()))
+    check("一時フォルダの外・名前が似ているだけの場所・場所の分からない部屋は、一時フォルダとしない",
+          not rooms.is_temp(expected["rooms"][0]["path"]) and not rooms.is_temp(temp.rstrip("\\/") + "-other") and not rooms.is_temp(""),
+          repr(rooms.temp_roots()))
+
     # --- 2回目の scan（変わっていない記録は読み直さない） ---
     again = scan.scan()
     check("2回目は1本も読み直さない", again["read"] == 0 and again["reused"] == expected["files"],

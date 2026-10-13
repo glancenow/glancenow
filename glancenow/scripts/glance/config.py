@@ -25,6 +25,7 @@ DEFAULT = {
         "show": "recent30",
         "list": [],
         "hide": [],
+        "show_temp": False,
         "order": "last_active",
         "manual_order": [],
         "names": {},
@@ -161,6 +162,11 @@ def parse(raw):
         for key in ("list", "hide", "manual_order"):
             if key in rooms:
                 text_list("rooms", key)
+        if "show_temp" in rooms:
+            if isinstance(rooms["show_temp"], bool):
+                result["rooms"]["show_temp"] = rooms["show_temp"]
+            else:
+                errors.append("%srooms.show_temp は true か false で書きます" % where("show_temp"))
         if "names" in rooms:
             names = rooms["names"]
             if isinstance(names, dict) and all(isinstance(v, str) for v in names.values()):

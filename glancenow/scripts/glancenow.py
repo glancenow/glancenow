@@ -33,6 +33,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from glance import VERSION, build, config, guide, log, paths, records, refresh, rooms, scan, state, util  # noqa: E402
 
+# OS の一時フォルダの下の部屋を載せなかった時の知らせ（rooms と setup-done が出す。%d＝その数）
+TEMP_OUT_LINE = "一時フォルダの下の部屋 %d は、載せていません（載せる時: config-set rooms.show_temp=true）。"
+
 
 def _utf8_output():
     for stream in (sys.stdout, sys.stderr):
@@ -254,11 +257,14 @@ def cmd_config_help(_args):
 def cmd_rooms(_args):
     data = rooms.load()
     now = time.time()
-    listed = sorted(data["rooms"].values(), key=lambda room: -(room.get("last_active") or 0))
-    recent = sum(1 for room in listed if now - (room.get("last_active") or 0) <= build.SHOW_DAYS * build.DAY)
-    if not listed:
+    everything = sorted(data["rooms"].values(), key=lambda room: -(room.get("last_active") or 0))
+    if not everything:
         print("部屋は、まだ見つかっていません（先に scan を実行します）。")
         return 0
+    # OS の一時フォルダの下の部屋は、設定で載せると決めた時だけ、一覧と数に入れる（画面と同じ決まり）
+    show_temp = config.load()["config"]["rooms"]["show_temp"]
+    listed = [room for room in everything if show_temp or not rooms.is_temp(room.get("path") or "")]
+    recent = sum(1 for room in listed if now - (room.get("last_active") or 0) <= build.SHOW_DAYS * build.DAY)
     print("見つけた部屋 %d（この%d日に動いた部屋 %d）。最後に動いた順:" % (len(listed), build.SHOW_DAYS, recent))
     for number, room in enumerate(listed, 1):
         moved = room.get("last_active") or 0
@@ -267,6 +273,8 @@ def cmd_rooms(_args):
             build.ago_text(max(0, now - moved)) if moved else "分からない",
             room.get("id"), room.get("path") or "場所は分からない"))
     print("設定に部屋を書く時は、名前・場所・id のどれでも書けます（同じ名前の部屋が2つある時は id）。")
+    if len(everything) > len(listed):
+        print(TEMP_OUT_LINE % (len(everything) - len(listed)))
     return 0
 
 
@@ -288,6 +296,8 @@ def cmd_setup_done(_args):
     _drop_hidden_prompts()
     result = build.build("setup")
     print("画面を作りました: %s" % result["path"])
+    if result["temp_out"]:
+        print(TEMP_OUT_LINE % result["temp_out"])
     _print_config_report(result)
     return 0
 

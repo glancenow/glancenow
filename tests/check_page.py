@@ -133,7 +133,7 @@ def main():
           block("recent").count('<article class="card"') == len(in_7) == members("recent"), members("recent"))
     check("「判断待ち」に2件", members("waiting") == 2, members("waiting"))
     check("いちばん上に、部屋の数と判断待ちの数", '<b data-count="rooms">%d</b>部屋' % len(in_30) in text and '<b data-count="waiting">2</b>判断待ち' in text)
-    check("載せていない部屋の数を下に書く", "ほかに %d部屋あります" % (len(data["rooms"]) - len(in_30)) in text)
+    check("載せていない部屋の数と訳を下に書く", "ほかに %d部屋あります（30日より前に動いた部屋）。" % (len(data["rooms"]) - len(in_30)) in text)
     check("読めなかった記録の本数を下に書く", "読めなかった記録が 1本あります" in text)
     check("状態は 形＋文字 で出る", '<span class="chip active i-status"><i aria-hidden="true">●</i>動かしている</span>' in text
           and '<i aria-hidden="true">◐</i>維持だけ' in text and '<i aria-hidden="true">－</i>記録なし' in text)
@@ -152,6 +152,17 @@ def main():
           and inside["base"]["sections"] == ["waiting", "recent", "all", "stalled"] and all(inside["base"]["items"].values()))
     check("「変える」ボタンは hidden で入っている（JavaScript が動く所でだけ出す）", '<button type="button" class="btn" data-tune-open hidden>変える</button>' in text)
     check("JavaScript は <head> の中（中身が描かれる前に見た目を当てる）", text.index("glancenow:v1:") < text.index("<body>"))
+
+    # ---------- 30日より前に止まった部屋は、数だけを出す ----------
+    older = len(data["rooms"]) - len(in_30)
+    stalled = block("stalled", text)
+    check("30日より前に止まった部屋は、数だけを「止まっている部屋」の節の終わりに出す（%d）" % older, older == 2
+          and ('</details><p class="older">このほかに、30日より前に止まった部屋が %d つあります。</p>' % older) in stalled, stalled[-160:])
+    check("その部屋の名前は、画面に出ない", "レポート" not in body_of(text))
+    check("節に入る部屋が0件の時は、「載せている部屋の中に」と書く", members("stalled", text) == 0
+          and "載せている部屋の中に、止まっている部屋はありません。" in stalled)
+    check("数が10以上の時は「つ」を付けない", build.older_text(9).endswith("が 9 つあります。") and build.older_text(12).endswith("が 12 あります。"),
+          build.older_text(12))
 
     # ---------- 自動の作り直し ----------
     rewind()
@@ -226,6 +237,25 @@ def main():
     rebuild()
     check("rooms.show=all → 全部の部屋が載る（%d）" % len(data["rooms"]), members("all") == len(data["rooms"]), members("all"))
     check("止まっている部屋は畳んで出す", "<details>" in block("stalled") and members("stalled") == 2, members("stalled"))
+    check("全部の部屋を載せている時は、30日より前の部屋の数の行を出さない", 'class="older"' not in html())
+
+    # OS の一時フォルダの下の部屋（rooms.show_temp）
+    temp_room = os.path.join(tempfile.gettempdir(), "glancenow-temp-room")
+    rooms.touch(temp_room, exact=True)
+    result = rebuild()
+    check("OS の一時フォルダの下の部屋は、載せない（下に、載せていない訳を書く）", members("all") == len(data["rooms"])
+          and "glancenow-temp-room" not in body_of() and result["temp_out"] == 1
+          and "ほかに 1部屋あります（一時フォルダの下の部屋）。ここには載せていません。" in html(), (members("all"), result["temp_out"]))
+    write_config(lambda data: data["rooms"].update(show_temp=True))
+    result = rebuild()
+    check("rooms.show_temp=true → 一時フォルダの下の部屋も載る", members("all") == len(data["rooms"]) + 1
+          and "glancenow-temp-room" in block("all") and result["temp_out"] == 0, (members("all"), result["temp_out"]))
+    write_config(lambda data: data["rooms"].update(show_temp="yes"))
+    rebuild()
+    check("rooms.show_temp に true／false でない値 → 書き方を知らせる", "rooms.show_temp は true か false で書きます" in html())
+    write_config(lambda data: data["rooms"].update(show_temp=False))
+    rooms.update(lambda stored: stored["rooms"].pop(rooms.room_id(temp_room), None))
+    rebuild()
     write_config(lambda data: data["rooms"].update(hide=["big-log", first["path"]]))
     rebuild()
     check("rooms.hide（名前でも場所でも） → 載らない", "big-log" not in block("all") and "shop-site" not in block("all"))
@@ -249,6 +279,8 @@ def main():
     check("出さない節も中には入れてある（画面から出せるように hidden で）", sorted(hidden_blocks) == ["recent", "stalled"]
           and html().index('id="waiting"') < html().index('id="recent" hidden'), hidden_blocks)
     check("節への移動も、出す節だけ", re.findall(r'<li data-jump="(\w+)">', html()) == ["all", "waiting"])
+    check("「止まっている部屋」を出さない時は、30日より前の部屋の数の行も、その節と一緒に隠れる", html().count('<p class="older">') == 1
+          and '<p class="older">' in block("stalled") and 'id="stalled" hidden>' in html())
     write_config(lambda data: (data.update(sections=["recent"]), data["items"].update(status=False, next=False, last_active=False)))
     rebuild()
     check("items → 隠した項目は <html data-off> に並ぶ（CSS で隠す）", 'data-off="status next last_active"' in html_tag(), html_tag())

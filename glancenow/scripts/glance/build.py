@@ -44,6 +44,8 @@ SECTION_EMPTY = {
     "all": "載せる部屋がありません。",
     "stalled": "止まっている部屋はありません。",
 }
+# 載せていない古い部屋がある時の「止まっている部屋」の空の文（すぐ下に、その数の1行が続く）
+STALLED_EMPTY_WITH_OLDER = "載せている部屋の中に、止まっている部屋はありません。"
 
 ITEM_LABEL = {
     "status": "状態",
@@ -122,7 +124,11 @@ def matches(room, reference):
 
 
 def collect(config, rooms_data, now):
-    """設定に合わせて、載せる部屋を並べて返す。返す物＝(載せる部屋, 載せなかった数)。"""
+    """設定に合わせて、載せる部屋を並べて返す。
+
+    返す物＝(載せる部屋, 載せなかった数)。載せなかった数は
+    {"all": 全部で, "temp": OS の一時フォルダの下だから, "older": 30日より前に動いたきりだから}。
+    """
     rule = config["rooms"]
     everything = []
     for key, raw in rooms_data["rooms"].items():
@@ -147,14 +153,20 @@ def collect(config, rooms_data, now):
         everything.append(room)
 
     shown = []
+    left = {"all": 0, "temp": 0, "older": 0}
     for room in everything:
+        if not rule["show_temp"] and rooms_module.is_temp(room["path"]):
+            left["temp"] += 1
+            continue
         if any(matches(room, reference) for reference in rule["hide"]):
             continue
         if rule["show"] == "recent30" and now - room["last_active"] > SHOW_DAYS * DAY:
+            left["older"] += 1
             continue
         if rule["show"] == "list" and not any(matches(room, reference) for reference in rule["list"]):
             continue
         shown.append(room)
+    left["all"] = len(everything) - len(shown)
 
     shown.sort(key=lambda room: -room["last_active"])
     if rule["order"] == "name":
@@ -166,7 +178,7 @@ def collect(config, rooms_data, now):
                     return index
             return len(rule["manual_order"])
         shown.sort(key=place)  # 並びに書かれていない部屋は、後ろに新しい順で続く
-    return shown, len(everything) - len(shown)
+    return shown, left
 
 
 def chip(room):
@@ -212,8 +224,17 @@ def wait_row(room):
         ("記録 " + esc(room["status_time"])) if room.get("status_time") else "")
 
 
-def section_html(name, shown, now, keep_prompt, visible):
-    """節1つの HTML と、その節に入った部屋の数を返す。visible＝設定でこの節を出すか。"""
+def older_text(count):
+    """載せていない古い部屋の数を知らせる1行（部屋の名前は出さない）。"""
+    amount = ("%d つ" % count) if count < 10 else ("%d " % count)  # 「つ」で数えるのは9まで
+    return "このほかに、%d日より前に止まった部屋が %sあります。" % (SHOW_DAYS, amount)
+
+
+def section_html(name, shown, now, keep_prompt, visible, older=0):
+    """節1つの HTML と、その節に入った部屋の数を返す。visible＝設定でこの節を出すか。
+
+    older＝30日より前に動いたきりで載せていない部屋の数（「止まっている部屋」の節の終わりに1行で出す）。
+    """
     if name == "waiting":
         members = [room for room in shown if room["waiting"]]
         kind, inner = "ul class=\"waits\"", "".join(wait_row(room) for room in members)
@@ -228,12 +249,15 @@ def section_html(name, shown, now, keep_prompt, visible):
         kind, inner = "ul class=\"rows\"", "".join(row(room, now) for room in members)
 
     tag = kind.split(" ")[0]
+    empty = STALLED_EMPTY_WITH_OLDER if (name == "stalled" and older) else SECTION_EMPTY[name]
     body = "<%s data-list%s>%s</%s><p class=\"empty\"%s>%s</p>" % (
-        kind, "" if members else " hidden", inner, tag, " hidden" if members else "", esc(SECTION_EMPTY[name]))
+        kind, "" if members else " hidden", inner, tag, " hidden" if members else "", esc(empty))
     heading = "<h2>%s</h2><span class=\"n\">%d</span><span class=\"about\">%s</span>" % (
         esc(SECTION_TITLE[name]), len(members), esc(SECTION_ABOUT[name]))
     if name == "stalled":
         body = "<details><summary>%s</summary>%s</details>" % (heading, body)  # 動きのない部屋は畳んでおく
+        if older:
+            body += "<p class=\"older\">%s</p>" % esc(older_text(older))  # 畳んでいても見える所に置く
     else:
         body = heading + body
     return "<section class=\"block\" id=\"%s\"%s>%s</section>" % (name, "" if visible else " hidden", body), len(members)
@@ -297,7 +321,8 @@ def render(loaded, rooms_data, now):
     """画面の HTML を作って返す。返す物＝{"html": 文字, "shown": 載せた部屋の数, ...}"""
     config = loaded["config"]
     items = config["items"]
-    shown, left_out = collect(config, rooms_data, now)
+    shown, left = collect(config, rooms_data, now)
+    left_out = left["all"]
     for room in shown:
         room["status_time"] = ago_text(max(0, now - room["record_time"])) if room["record_time"] else ""
     waiting_count = sum(1 for room in shown if room["waiting"])
@@ -307,7 +332,7 @@ def render(loaded, rooms_data, now):
     order = list(config["sections"])
     for name in order + [name for name in config_module.SECTIONS if name not in order]:
         visible = name in order
-        block, count = section_html(name, shown, now, items["last_prompt"], visible)
+        block, count = section_html(name, shown, now, items["last_prompt"], visible, older=left["older"])
         blocks.append(block)
         jump.append("<li data-jump=\"%s\"%s><a href=\"#%s\">%s<span class=\"n\">%d</span></a></li>" % (
             name, "" if visible else " hidden", name, esc(SECTION_TITLE[name]), count))
@@ -326,8 +351,14 @@ def render(loaded, rooms_data, now):
     else:
         foot.append("<p>読めなかった記録は 0本です。</p>")
     if left_out:
-        reason = "30日より前に動いた部屋・隠した部屋" if config["rooms"]["show"] == "recent30" else "設定で外した部屋"
-        foot.append("<p>ほかに %d部屋あります（%s）。ここには載せていません。</p>" % (left_out, reason))
+        reasons = []
+        if left["older"]:
+            reasons.append("%d日より前に動いた部屋" % SHOW_DAYS)
+        if left_out - left["older"] - left["temp"]:
+            reasons.append("設定で外した部屋")
+        if left["temp"]:
+            reasons.append("一時フォルダの下の部屋")
+        foot.append("<p>ほかに %d部屋あります（%s）。ここには載せていません。</p>" % (left_out, "・".join(reasons)))
     foot.append("<p data-screen-note hidden></p>")
     foot.append("<p>GlanceNow %s</p>" % esc(VERSION))
 
@@ -370,7 +401,8 @@ def render(loaded, rooms_data, now):
         ("{{body}}", body),  # 部屋の文が入るので、最後に入れる
     ):
         page = page.replace(key, value)
-    return {"html": page, "shown": len(shown), "left_out": left_out, "waiting": waiting_count}
+    return {"html": page, "shown": len(shown), "left_out": left_out, "temp_out": left["temp"],
+            "older": left["older"], "waiting": waiting_count}
 
 
 def build(reason="manual"):
@@ -388,4 +420,5 @@ def build(reason="manual"):
     seconds = round(time.perf_counter() - started, 3)
     log.write("build", reason=reason, rooms=page["shown"], config=loaded["source"], sec=seconds)
     return {"path": str(target), "sec": seconds, "rooms": page["shown"], "waiting": page["waiting"],
+            "temp_out": page["temp_out"],
             "config": loaded["source"], "errors": loaded["errors"], "warnings": loaded["warnings"]}
