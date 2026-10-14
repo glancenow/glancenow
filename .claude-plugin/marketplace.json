@@ -2,7 +2,7 @@
   "name": "glancenow",
   "description": "GlanceNow：作業フォルダ（部屋）ごとの今を、1枚の画面にまとめて出すプラグイン",
   "owner": {
-    "name": "GlanceNow"
+    "name": "Buletree"
   },
   "plugins": [
     {
