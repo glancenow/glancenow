@@ -179,8 +179,10 @@ def main():
     check("hooks.json：会話の始まりは2つ（軽い方は待つ・重い方は async）", len(light) == 1 and len(heavy) == 1
           and not light[0].get("async") and heavy[0].get("async") is True and light[0].get("timeout", 0) >= 30,
           repr([(item.get("async"), item.get("timeout")) for item in entries]))
-    others = [item for name in ("UserPromptSubmit", "Stop") for group in declared[name] for item in group["hooks"]]
-    check("hooks.json：質問を送った時・返事が終わった時は async（会話を待たせない）",
+    # 返事が終わる時の止める形（stopcheck）は、止めるために async にしない。印が無い時は Python を起動しない（check_entry で見る）
+    others = [item for name in ("UserPromptSubmit", "Stop") for group in declared[name] for item in group["hooks"]
+              if "stopcheck" not in item["command"]]
+    check("hooks.json：質問を送った時・返事が終わった時は async（会話を待たせない。止める形の stopcheck は除く）",
           len(others) == 2 and all(item.get("async") is True for item in others),
           repr([(item.get("async"), item.get("timeout")) for item in others]))
 

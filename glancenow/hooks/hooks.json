@@ -1,5 +1,5 @@
 {
-  "description": "GlanceNow：会話の始まり・質問を送った時・返事が終わった時に、画面の元データを新しくする",
+  "description": "GlanceNow：会話の始まり・質問を送った時・返事が終わった時に、画面の元データを新しくする。「区切り」のスキルが動いた返事では、終わりに部屋の1行を書かせる",
   "hooks": {
     "SessionStart": [
       {
@@ -30,6 +30,19 @@
         ]
       }
     ],
+    "PostToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook skill 2>/dev/null || python \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook skill 2>/dev/null || true",
+            "timeout": 30,
+            "async": true
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
@@ -38,6 +51,11 @@
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook 2>/dev/null || python \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook 2>/dev/null || true",
             "timeout": 30,
             "async": true
+          },
+          {
+            "type": "command",
+            "command": "for f in \"${GLANCENOW_HOME:-${USERPROFILE:-$HOME}/.glancenow}/pending/\"*; do [ -e \"$f\" ] && { python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook stopcheck 2>/dev/null || python \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook stopcheck 2>/dev/null; }; break; done; true",
+            "timeout": 30
           }
         ]
       }

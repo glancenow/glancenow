@@ -64,6 +64,27 @@ def main():
         done = subprocess.run(entry + ["hook"], env=env, input=sent, capture_output=True)
         return done.stdout.decode("utf-8", errors="replace").strip()
 
+    def skill_hook(skill, session="s1"):
+        """スキルが動いた直後のフック（PostToolUse・Skill）と同じ形で呼ぶ。返す物＝log.txt の最後の行の印。"""
+        payload = {"hook_event_name": "PostToolUse", "tool_name": "Skill", "tool_input": {"skill": skill},
+                   "session_id": session, "cwd": first["path"], "transcript_path": str(transcript)}
+        subprocess.run(entry + ["hook", "skill"], env=env, input=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                       capture_output=True)
+        rows = log_rows("hook")
+        return (rows[-1].get("done") or [""])[0] if rows else ""
+
+    def stop_check(session="s1", active=False):
+        """返事が終わる時の、止める形のフックと同じ形で呼ぶ。返す物＝標準出力。"""
+        payload = {"hook_event_name": "Stop", "session_id": session, "stop_hook_active": active,
+                   "cwd": first["path"], "transcript_path": str(transcript)}
+        done = subprocess.run(entry + ["hook", "stopcheck"], env=env, input=json.dumps(payload).encode("utf-8"),
+                              capture_output=True)
+        return done.stdout.decode("utf-8", errors="replace").strip()
+
+    def flags():
+        folder = home / "pending"
+        return sorted(item.stem for item in folder.glob("*.json")) if folder.is_dir() else []
+
     def log_rows(kind=None):
         try:
             rows = [json.loads(line) for line in (home / "log.txt").read_text(encoding="utf-8").splitlines()]
@@ -131,6 +152,8 @@ def main():
           and not (home / "glancenow.html").exists(), said)
     code, said = run("open")
     check("画面が無い時の open → exit 1 で知らせる", code == 1 and "まだありません" in said, said)
+    mark = skill_hook("区切り", "s0")
+    check("最初の質問の前は、「区切り」のスキルが動いても印を置かない", mark == "mark(skip(setup))" and flags() == [], (mark, flags()))
 
     # ---------- 設定を書き換える入口 ----------
     code, said = run("config-show")
@@ -227,6 +250,67 @@ def main():
     code, said = run("guide")
     check("guide → 「済み」", "済み" in said, said)
 
+    # ---------- 「区切り」のスキルの後の1行（返事の終わりに頼む） ----------
+    from glance import pending, records
+    room_key = rooms_module.room_id(first["path"])
+    check("「区切り」のスキル → その会話に印を置く（部屋の id つき）", skill_hook("区切り", "s1") == "mark(set)" and flags() == ["s1"]
+          and json.loads((home / "pending" / "s1.json").read_text(encoding="utf-8"))["room"] == room_key, flags())
+    check("プラグインのスキル（名前:区切り）でも印を置く", skill_hook("myplugin:区切り", "s2") == "mark(set)" and "s2" in flags(), flags())
+    check("ほかのスキル・GlanceNow 自身の checkpoint では、印を置かない・消さない",
+          skill_hook("AXログ", "s3") == "mark(skip)" and skill_hook("glancenow:checkpoint", "s1") == "mark(skip)"
+          and flags() == ["s1", "s2"], flags())
+    out = stop_check("s9")
+    check("ほかの会話の返事の終わりでは、何も返さない・印は残す", out == "" and flags() == ["s1", "s2"], (out, flags()))
+    out = stop_check("s1")
+    try:
+        asked = json.loads(out)
+    except ValueError:
+        asked = {}
+    check("印のある会話の返事の終わり → 止めて、1行を頼む文を返す（decision: block）", asked.get("decision") == "block"
+          and "glancenow:checkpoint" in asked.get("reason", "") and "「区切り」" in asked.get("reason", ""), out[:200])
+    check("返す文字は ASCII だけ・頼んだ印は消す", out.isascii() and flags() == ["s2"], flags())
+    check("同じ会話の次の返事の終わりでは、もう頼まない（1つの印で1回）", stop_check("s1") == "", flags())
+    code, said = run("note", "--cwd", first["path"], "--status", "動かしている", "--next", "区切りの後に書いた1行")
+    check("note で1行を書く → その部屋の印を消す（会話が違っても）", code == 0 and flags() == [], flags())
+    skill_hook("区切り", "s5")
+    records.add(room_key, first["path"], "動かしている", "印を消さずに書いた1行")
+    out = stop_check("s5")
+    check("印の後に1行が書かれていれば、頼まずに印を消す", out == "" and flags() == []
+          and "stopcheck(written)" in (log_rows("hook")[-1].get("done") or []), log_rows("hook")[-1].get("done"))
+    skill_hook("区切り", "s7")
+    check("ほかのフックが続けさせた後（stop_hook_active）でも、印があれば1回だけ頼む",
+          json.loads(stop_check("s7", active=True) or "{}").get("decision") == "block" and flags() == [], flags())
+    (home / "pending" / "old.json").write_text(json.dumps({"session": "old", "room": room_key, "at": 1}), encoding="utf-8")
+    stop_check("s8")
+    check("古い印（12時間より前）は、ほかの会話の返事の終わりに消す", flags() == [], flags())
+    run("config-set", "checkpoint.after_skills=")
+    check("checkpoint.after_skills を空にする → 印を置かない", skill_hook("区切り", "s6") == "mark(skip)" and flags() == [], flags())
+    code, said = run("config-set", "checkpoint.after_skills=区切り,wrap-up")
+    check("checkpoint.after_skills に名前を足せる", code == 0 and config.load()["config"]["checkpoint"]["after_skills"] == ["区切り", "wrap-up"]
+          and skill_hook("wrap-up", "s6") == "mark(set)", said)
+    pending.clear(room_key)
+
+    hooks = json.loads((PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
+    post = [(group.get("matcher"), item) for group in hooks.get("PostToolUse", []) for item in group["hooks"]]
+    stops = [item for group in hooks.get("Stop", []) for item in group["hooks"] if "stopcheck" in item["command"]]
+    check("hooks.json：スキルの直後（matcher Skill）に hook skill・返事の終わりに止める形（async なし）の stopcheck",
+          len(post) == 1 and post[0][0] == "Skill" and "hook skill" in post[0][1]["command"]
+          and len(stops) == 1 and not stops[0].get("async"), (post, stops))
+    shell = os.environ.get("CLAUDE_CODE_GIT_BASH_PATH") or (r"C:\Program Files\Git\bin\bash.exe" if os.name == "nt" else shutil.which("sh"))
+    if shell and os.path.exists(shell) and stops:
+        shell_env = dict(env, CLAUDE_PLUGIN_ROOT=str(PLUGIN))
+        sent = json.dumps({"hook_event_name": "Stop", "session_id": "s6", "cwd": first["path"]}).encode("utf-8")
+        rows_before = len(log_rows("hook"))
+        idle = subprocess.run([shell, "-c", stops[0]["command"]], env=shell_env, input=sent, capture_output=True)
+        check("印が無い時、返事の終わりのフックは Python を起動しない（%s）" % os.path.basename(shell),
+              idle.returncode == 0 and idle.stdout == b"" and len(log_rows("hook")) == rows_before, (idle.returncode, idle.stdout[:80]))
+        skill_hook("区切り", "s6")
+        busy = subprocess.run([shell, "-c", stops[0]["command"]], env=shell_env, input=sent, capture_output=True)
+        check("印がある時は、同じコマンドで止める形の文が返る", busy.returncode == 0
+              and json.loads(busy.stdout.decode("utf-8") or "{}").get("decision") == "block" and flags() == [], busy.stdout[:120])
+    else:
+        print("（シェルが見つからないので、hooks.json のコマンドを走らせる2つは飛ばしました）")
+
     import webbrowser
     import glancenow
     opened = []
@@ -277,7 +361,7 @@ def main():
     pairs = set()
     for chunk in re.findall(r"`([^`\n]+)`", written) + re.findall(r"config-set ([^\n`]+)", written):
         for word in chunk.replace("config-set ", "").split(" "):
-            if re.match(r"^(rooms\.[a-z_]+(\.[\w-]+)?|items\.[a-z_]+|look\.[a-z_]+|sections)=[^<…]+$", word):
+            if re.match(r"^(rooms\.[a-z_]+(\.[\w-]+)?|items\.[a-z_]+|look\.[a-z_]+|checkpoint\.[a-z_]+|sections)=[^<…]+$", word):
                 pairs.add(word)
     bad = []
     config.config_file().write_text(config.to_text(config.default_config()), encoding="utf-8")
@@ -289,8 +373,9 @@ def main():
         config.config_file().write_text(fresh, encoding="utf-8")
     check("スキルと説明に書いた「項目=値」は、全部書ける（%d個）" % len(pairs), len(pairs) >= 12 and not bad, bad[:3] or sorted(pairs))
 
-    check("説明に、設定の全部の項目が出てくる", all(("`%s`" % key) in docs for group in ("rooms", "items", "look") for key in config.DEFAULT[group])
-          and "### sections" in docs)
+    check("説明に、設定の全部の項目が出てくる", all(("`%s`" % key) in docs for group in ("rooms", "items", "look", "checkpoint")
+                                                for key in config.DEFAULT[group])
+          and "### sections" in docs and "### checkpoint" in docs)
     values = config.SHOW + config.ORDER + config.SECTIONS + config.THEMES + config.FONT_SIZES + config.ACCENTS
     check("説明に、書ける値が全部出てくる", all(('"%s"' % value) in docs or ("`%s`" % value) in docs for value in values),
           [value for value in values if ('"%s"' % value) not in docs and ("`%s`" % value) not in docs])

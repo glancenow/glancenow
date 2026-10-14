@@ -43,6 +43,9 @@ DEFAULT = {
         "font_size": "normal",
         "accent": "blue",
     },
+    "checkpoint": {
+        "after_skills": ["区切り"],
+    },
 }
 
 _HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -143,7 +146,7 @@ def parse(raw):
         if key not in DEFAULT:
             warnings.append("%s知らない項目 %s があります（使いません）" % (where(key), key))
 
-    for group in ("rooms", "items", "look"):
+    for group in ("rooms", "items", "look", "checkpoint"):
         if group not in data:
             continue
         if not isinstance(data[group], dict):
@@ -208,6 +211,10 @@ def parse(raw):
         if "accent" in look:
             choice("look", "accent", ACCENTS, also="／#rrggbb の形の色",
                    extra=lambda value: isinstance(value, str) and bool(_HEX_COLOR.match(value)))
+
+    checkpoint = data.get("checkpoint")
+    if isinstance(checkpoint, dict) and "after_skills" in checkpoint:
+        text_list("checkpoint", "after_skills")
 
     if errors:
         return None, errors, warnings
@@ -303,7 +310,7 @@ def set_values(pairs):
             continue
         if group == "sections" and len(parts) == 1:
             data["sections"] = _as_list(text)
-        elif group in ("rooms", "items", "look") and len(parts) >= 2 and parts[1] in DEFAULT[group]:
+        elif group in ("rooms", "items", "look", "checkpoint") and len(parts) >= 2 and parts[1] in DEFAULT[group]:
             if not isinstance(data.get(group), dict):
                 data[group] = {}
             name = parts[1]

@@ -4,6 +4,8 @@
 使い方:
   glancenow.py hook           フックから呼ぶ（標準入力に JSON が来る）
   glancenow.py hook scan      フックから呼ぶ。会話の記録を読むだけの方（会話の始まりに、裏で走らせる）
+  glancenow.py hook skill     フックから呼ぶ。スキルが動いた直後（「区切り」のスキルなら、1行が要る印を置く）
+  glancenow.py hook stopcheck フックから呼ぶ。返事が終わる時（印があれば、AI に1行を書かせる）
   glancenow.py scan           会話の記録を読んで、部屋を見つける
   glancenow.py note           部屋の記録に1行足す（状態・次の一手・判断待ち・一言）
   glancenow.py build          画面を今すぐ作る
@@ -31,7 +33,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from glance import VERSION, build, config, guide, log, paths, records, refresh, rooms, scan, state, util  # noqa: E402
+from glance import VERSION, build, config, guide, log, paths, pending, records, refresh, rooms, scan, state, util  # noqa: E402
 
 # OS の一時フォルダの下の部屋を載せなかった時の知らせ（rooms と setup-done が出す。%d＝その数）
 TEMP_OUT_LINE = "一時フォルダの下の部屋 %d は、載せていません（載せる時: config-set rooms.show_temp=true）。"
@@ -89,14 +91,25 @@ def cmd_hook(args):
     started = time.perf_counter()
     data = _read_hook_input()
     event = str(data.get("hook_event_name") or "")
+    mode = args[0] if args else ""
 
-    # Stop のフックが続けさせた結果としてまた Stop に来た時は、何もしない
-    if event == "Stop" and data.get("stop_hook_active"):
+    # Stop のフックが続けさせた結果としてまた Stop に来た時は、何もしない。
+    # ただし止める形の方（stopcheck）は見る＝印は1回で消すので、続けて止め続ける事は無い
+    if event == "Stop" and data.get("stop_hook_active") and mode != "stopcheck":
         return 0
 
     done = []
-    room_path = _hook_room(data)
-    if args[:1] == ["scan"]:
+    room_path = "" if mode == "stopcheck" else _hook_room(data)
+    if mode == "stopcheck":
+        # 返事が終わる時の、止める形の方。自分の会話に「区切り」の印があれば、AI に1行を書かせる
+        reason, mark = pending.on_stop(data)
+        done.append(mark)
+        if reason:
+            print(json.dumps({"decision": "block", "reason": reason}))
+    elif mode == "skill":
+        # スキルが動いた直後。「区切り」のスキルなら、その会話に印を置く。何も出力しない
+        done.append("mark(%s)" % pending.on_skill(data, room_path))
+    elif mode == "scan":
         # 会話の記録を全部読む方。時間がかかるので、会話の始まりに裏で走らせる（hooks.json の async）。
         # 案内を返す方と分けてある＝こちらが長引いても、案内は時間切れにならない。何も出力しない。
         stats = scan.scan(keep_prompts=_keep_prompts())
@@ -171,6 +184,8 @@ def cmd_note(args):
     now = time.time()
     line = records.add(room_key, room_path, status, options.next_step, options.waiting, options.memo, now=now)
     rooms.touch(room_path, now=now, exact=True)
+    # 「区切り」のスキルの後に置いた印を消す（返事の終わりに、もう一度頼まないため）
+    pending.clear(room_key, os.environ.get("CLAUDE_CODE_SESSION_ID") or "")
     print("記録しました（%s）: %s" % (rooms.room_name(room_path), line))
     # 書いた直後に画面を見る事が多いので、すぐ作り直す
     if refresh.check("note", force=True) == "not-setup":
