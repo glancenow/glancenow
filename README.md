@@ -31,16 +31,29 @@
 
 ## 入れ方
 
+### GitHub から入れる
+
+    claude plugin marketplace add glancenow/glancenow
+    claude plugin install glancenow@glancenow
+
+- 1行目で、このリポジトリを「プラグインの置き場」として Claude Code に登録します。2行目で、そこから GlanceNow を入れます。どのフォルダで打っても、全部の部屋に入ります。
+- `git` が要ります。GitHub のアカウントは要りません（公開のリポジトリです）。
+- Claude Code は、先に SSH で取りに行き、だめなら HTTPS で取りに行きます（公式の説明）。GitHub の SSH の鍵を持っていない時は、先に環境変数 `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` を決めておくと、最初から HTTPS で取りに行きます（公式の説明では、会話の中の `/plugin` から入れる時と、更新の時は、この切り替えが起きないため）。
+- 確かめた事：2026-10-18 に、Claude Code 2.1.296・Windows 11 で、本物の設定に触れない一時の設定フォルダを使い、SSH の時と `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` の時の両方で、2行とも通りました（`claude plugin list` に `glancenow@glancenow`・0.1.3・enabled）。
+- 新しい版に替える時は、`claude plugin marketplace update glancenow` → `claude plugin update glancenow@glancenow` の2行です。
+
+### フォルダから入れる
+
 このフォルダ（この `README.md` があるフォルダ）を、自分のPCの好きな場所に置いてから進めます。
 下の `<このフォルダの場所>` は、置いた場所に読み替えます。
 
-### 1回の会話だけで試す
+#### 1回の会話だけで試す
 
     claude --plugin-dir <このフォルダの場所>/glancenow
 
 その会話の間だけ、プラグインが読み込まれます。Claude Code の設定には何も書かれません。
 
-### 入れる（どの会話でも動くようにする）
+#### 入れる（どの会話でも動くようにする）
 
     claude plugin marketplace add <このフォルダの場所>
     claude plugin install glancenow@glancenow
@@ -52,7 +65,7 @@
 - 2.1.201 では、入れる時に中身が `.claude/plugins/cache`（ホームフォルダの下）へコピーされました。2.1.296 でも、このコピーは作られます。
 - 入った事を確かめる：`claude plugin list`（`glancenow@glancenow` が `enabled` と出ます）
 
-### 1つの部屋だけに入れる
+#### 1つの部屋だけに入れる
 
     cd <部屋の場所>
     claude plugin marketplace add <このフォルダの場所> --scope local
@@ -61,7 +74,7 @@
 - その部屋で開いた会話だけで、フックが動きます。書かれるのは、その部屋の `.claude/settings.local.json` だけです（ホームフォルダの下の Claude Code の設定には書かれません）。
 - 画面には、ほかの部屋も載ります（会話の記録は、全部の部屋の分を読みます）。ほかの部屋で「区切り」と言っても、その部屋のカードの状態・次の一手は変わりません。
 
-### 1つの部屋から、全部の部屋へ広げる
+#### 1つの部屋から、全部の部屋へ広げる
 
     cd <1つの部屋だけに入れた部屋の場所>
     claude plugin marketplace update glancenow
@@ -72,7 +85,7 @@
 - 終わると、全部の部屋の分が1つだけ残ります（`claude plugin list` で Scope が `user`）。ホームフォルダの下の Claude Code の設定に足されるのは、GlanceNow を有効にする1行だけでした。
 - 最後の行を打たなくても動きますが、部屋だけの分と全部の部屋の分が並び、新しい版に替える時の行が2倍になります。
 
-### 新しい版に替える
+#### 新しい版に替える
 
 置き場のフォルダ（入れる時に登録したフォルダ）の中身を、新しい版の中身に置き換えてから、次の2行を打ちます。
 
