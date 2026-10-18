@@ -197,3 +197,7 @@ GlanceNow が書くのは、ホームフォルダの下の `.glancenow` フォ�
 - `glancenow/scripts/.devguard`
 - `glancenow/scripts/.devguard.log`
 - `__pycache__` のフォルダ
+
+## ライセンス
+
+MIT ライセンスです（`LICENSE`）。使う・直す・配るのは自由です。写して配る時は、`LICENSE` の作者の表示と文をそのまま残してください。動きは保証しません。
