@@ -4,6 +4,8 @@ description: GlanceNow の最初の設定。使う人に、全部おまかせに
 allowed-tools:
   - Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py" *)
   - Bash(python "${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py" *)
+  - PowerShell(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py" *)
+  - PowerShell(python "${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py" *)
 ---
 
 # GlanceNow の最初の設定

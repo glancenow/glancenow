@@ -4,6 +4,8 @@ description: 作業の区切りに、この作業フォルダの今（状態・�
 allowed-tools:
   - Bash(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py" *)
   - Bash(python "${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py" *)
+  - PowerShell(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py" *)
+  - PowerShell(python "${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py" *)
 ---
 
 # 区切り：この部屋の今を、1行で記録する
