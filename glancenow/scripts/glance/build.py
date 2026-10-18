@@ -13,15 +13,18 @@ JavaScript が動かない所で開いても、設定ファイルどおりの中
 import html
 import json
 import os
+import shlex
 import time
 
 from . import VERSION, config as config_module, log, paths, records, rooms as rooms_module, state, util
 
 DAY = 24 * 3600
 SHOW_DAYS = 30     # rooms.show が recent30 の時に載せる日数
-RECENT_DAYS = 7    # 節「最近動いた部屋」に入れる日数
 STALLED_DAYS = 21  # 節「止まっている部屋」に入れる日数
 PROMPT_CHARS = 60  # 「最後に頼んだ文」の先頭から出す字数
+SHORT_PROMPT = util.SHORT_PROMPT  # 「最後に頼んだ文」がこの字数より短い時は、1つ前に頼んだ文も並べる
+PREV_CHARS = 40    # その「1つ前に頼んだ文」の先頭から出す字数
+# 節「最近動いた部屋」に入れる日数は、設定の rooms.recent_days（標準 2）
 
 STATUS_KIND = {"動かしている": "active", "維持だけ": "keep", "休眠": "sleep"}
 STATUS_MARK = {"active": "●", "keep": "◐", "sleep": "○", "none": "－"}
@@ -34,18 +37,23 @@ SECTION_TITLE = {
 }
 SECTION_ABOUT = {
     "waiting": "あなたの返事を待っている事",
-    "recent": "この%d日のあいだに動いた部屋" % RECENT_DAYS,
+    "recent": "この%d日のあいだに動いた、区切りの記録がある部屋",  # %d＝rooms.recent_days
     "all": "載せている部屋の一覧",
     "stalled": "%d日以上、動きのない部屋" % STALLED_DAYS,
 }
 SECTION_EMPTY = {
     "waiting": "判断待ちはありません。",
-    "recent": "この%d日のあいだに動いた部屋はありません。" % RECENT_DAYS,
+    "recent": "この%d日のあいだに動いた部屋はありません。",
     "all": "載せる部屋がありません。",
     "stalled": "止まっている部屋はありません。",
 }
+# 動いた部屋はあるが、どれにも区切りの記録が無い時の「最近動いた部屋」の空の文
+RECENT_EMPTY_NO_RECORD = "この%d日に動いた部屋に、区切りの記録はまだありません。部屋で「区切り」と言うと、次の一手がここに出ます。"
 # 載せていない古い部屋がある時の「止まっている部屋」の空の文（すぐ下に、その数の1行が続く）
 STALLED_EMPTY_WITH_OLDER = "載せている部屋の中に、止まっている部屋はありません。"
+
+OPEN_LABEL = "続きから開く"
+OPEN_ABOUT = "押すと、この部屋の最後の会話の続きを始める行をコピーします。端末に貼って実行します。"
 
 ITEM_LABEL = {
     "status": "状態",
@@ -139,6 +147,7 @@ def collect(config, rooms_data, now):
             "folder_name": raw.get("name") or key,
             "last_active": raw.get("last_active") or 0,
             "last_prompt": raw.get("last_prompt") or "",
+            "prev_prompt": raw.get("prev_prompt") or "",
             "has_record": bool(latest),
             "status": latest.get("status", ""),
             "next": latest.get("next", ""),
@@ -181,6 +190,36 @@ def collect(config, rooms_data, now):
     return shown, left
 
 
+def continue_line(path):
+    """その部屋で、最後の会話の続きを始める行（端末に貼る）。場所が分からない部屋は空の文字。"""
+    if not path:
+        return ""
+    if os.name == "nt":
+        # PowerShell と Git Bash の両方で動く形（PowerShell 5.1 は && を使えない）
+        return "cd \"%s\"; claude --continue" % path
+    return "cd %s && claude --continue" % shlex.quote(path)
+
+
+def open_button(room):
+    """「続きから開く」のボタン。JavaScript が動く時だけ出す（押すと行をコピーする）。"""
+    line = continue_line(room["path"])
+    if not line:
+        return ""
+    return "<button type=\"button\" class=\"btn small open\" data-open=\"%s\" title=\"%s\" hidden>%s</button>" % (
+        esc(line), esc(OPEN_ABOUT), esc(OPEN_LABEL))
+
+
+def prompt_html(room):
+    """「最後に頼んだ文」。短い合図（「再開」など）の時は、1つ前に頼んだ文も並べる。"""
+    text = room["last_prompt"]
+    out = esc(text[:PROMPT_CHARS] + ("…" if len(text) > PROMPT_CHARS else ""))
+    previous = room["prev_prompt"]
+    if len(text) < SHORT_PROMPT and previous:
+        short = previous[:PREV_CHARS] + ("…" if len(previous) > PREV_CHARS else "")
+        out += "<span class=\"prev\" title=\"1つ前に頼んだ文\">← %s</span>" % esc(short)
+    return out
+
+
 def chip(room):
     kind = room["kind"]
     label = room["status"] if kind != "none" else "記録なし"
@@ -195,26 +234,22 @@ def card(room, now, keep_prompt):
         facts.append("<li class=\"i-waiting\"><span class=\"k\">判断待ち</span><span class=\"v wait\">%s</span></li>" % esc(room["waiting"]))
     facts.append("<li class=\"i-last_active\"><span class=\"k\">最後に動いた</span><span class=\"v\">%s</span></li>" % time_tag(room["last_active"], now))
     if keep_prompt and room["last_prompt"]:
-        text = room["last_prompt"]
-        short = text[:PROMPT_CHARS] + ("…" if len(text) > PROMPT_CHARS else "")
-        facts.append("<li class=\"i-last_prompt\"><span class=\"k\">最後に頼んだ文</span><span class=\"v prompt\">%s</span></li>" % esc(short))
-    norecord = "" if room["has_record"] else "<p class=\"norecord\">区切りの記録が、まだありません</p>"
+        facts.append("<li class=\"i-last_prompt\"><span class=\"k\">最後に頼んだ文</span><span class=\"v prompt\">%s</span></li>" % prompt_html(room))
     return (
         "<article class=\"card\" data-room=\"%s\"><header><h3 title=\"%s\">%s</h3>%s</header><ul class=\"facts\">%s</ul>%s</article>"
-        % (esc(room["id"]), esc(room["path"]), esc(room["name"]), chip(room), "".join(facts), norecord)
+        % (esc(room["id"]), esc(room["path"]), esc(room["name"]), chip(room), "".join(facts), open_button(room))
     )
 
 
 def row(room, now):
-    text = ""
-    if room["waiting"]:
-        text += "<span class=\"wait i-waiting\">判断待ち</span>"
-    if room["next"]:
-        text += "<span class=\"i-next\">%s</span>" % esc(room["next"])
+    # 判断待ちの印は、次の一手の文と離して、行の終わりの列に置く（次の一手が判断待ちの中身に見えないように）
+    flag = "<span class=\"flag i-waiting\" title=\"%s\">⚠ 判断待ちあり</span>" % esc(room["waiting"]) if room["waiting"] else ""
+    text = "<span class=\"i-next\">%s</span>" % esc(room["next"]) if room["next"] else ""
     return (
         "<li data-room=\"%s\"><span class=\"room\" title=\"%s\">%s</span>%s"
-        "<span class=\"when i-last_active\">%s</span><span class=\"next\">%s</span></li>"
-        % (esc(room["id"]), esc(room["path"]), esc(room["name"]), chip(room), time_tag(room["last_active"], now), text)
+        "<span class=\"when i-last_active\">%s</span><span class=\"next\">%s</span>%s%s</li>"
+        % (esc(room["id"]), esc(room["path"]), esc(room["name"]), chip(room), time_tag(room["last_active"], now), text,
+           flag, open_button(room))
     )
 
 
@@ -230,17 +265,24 @@ def older_text(count):
     return "このほかに、%d日より前に止まった部屋が %sあります。" % (SHOW_DAYS, amount)
 
 
-def section_html(name, shown, now, keep_prompt, visible, older=0):
+def section_html(name, shown, now, keep_prompt, visible, older=0, recent_days=2):
     """節1つの HTML と、その節に入った部屋の数を返す。visible＝設定でこの節を出すか。
 
     older＝30日より前に動いたきりで載せていない部屋の数（「止まっている部屋」の節の終わりに1行で出す）。
+    recent_days＝「最近動いた部屋」に入れる日数。カードにするのは、区切りの記録がある部屋だけ
+    （記録の無い部屋には、カードで読む次の一手が無い。「全部の部屋」の表には出る）。
     """
+    empty = SECTION_EMPTY[name]
+    about = SECTION_ABOUT[name]
     if name == "waiting":
         members = [room for room in shown if room["waiting"]]
         kind, inner = "ul class=\"waits\"", "".join(wait_row(room) for room in members)
     elif name == "recent":
-        members = [room for room in shown if now - room["last_active"] <= RECENT_DAYS * DAY]
+        moved = [room for room in shown if now - room["last_active"] <= recent_days * DAY]
+        members = [room for room in moved if room["has_record"]]
         kind, inner = "div class=\"cards\"", "".join(card(room, now, keep_prompt) for room in members)
+        about = about % recent_days
+        empty = (RECENT_EMPTY_NO_RECORD if moved else empty) % recent_days
     elif name == "all":
         members = list(shown)
         kind, inner = "ul class=\"rows\"", "".join(row(room, now) for room in members)
@@ -249,11 +291,12 @@ def section_html(name, shown, now, keep_prompt, visible, older=0):
         kind, inner = "ul class=\"rows\"", "".join(row(room, now) for room in members)
 
     tag = kind.split(" ")[0]
-    empty = STALLED_EMPTY_WITH_OLDER if (name == "stalled" and older) else SECTION_EMPTY[name]
+    if name == "stalled" and older:
+        empty = STALLED_EMPTY_WITH_OLDER
     body = "<%s data-list%s>%s</%s><p class=\"empty\"%s>%s</p>" % (
         kind, "" if members else " hidden", inner, tag, " hidden" if members else "", esc(empty))
     heading = "<h2>%s</h2><span class=\"n\">%d</span><span class=\"about\">%s</span>" % (
-        esc(SECTION_TITLE[name]), len(members), esc(SECTION_ABOUT[name]))
+        esc(SECTION_TITLE[name]), len(members), esc(about))
     if name == "stalled":
         body = "<details><summary>%s</summary>%s</details>" % (heading, body)  # 動きのない部屋は畳んでおく
         if older:
@@ -332,10 +375,13 @@ def render(loaded, rooms_data, now):
     order = list(config["sections"])
     for name in order + [name for name in config_module.SECTIONS if name not in order]:
         visible = name in order
-        block, count = section_html(name, shown, now, items["last_prompt"], visible, older=left["older"])
+        block, count = section_html(name, shown, now, items["last_prompt"], visible, older=left["older"],
+                                    recent_days=config["rooms"]["recent_days"])
         blocks.append(block)
-        jump.append("<li data-jump=\"%s\"%s><a href=\"#%s\">%s<span class=\"n\">%d</span></a></li>" % (
-            name, "" if visible else " hidden", name, esc(SECTION_TITLE[name]), count))
+        # 判断待ちがある時は、その丸ボタンを判断待ちの色にする（いちばん上の数の代わり）
+        busy = " class=\"has-wait\"" if (name == "waiting" and count) else ""
+        jump.append("<li data-jump=\"%s\"%s%s><a href=\"#%s\">%s<span class=\"n\">%d</span></a></li>" % (
+            name, busy, "" if visible else " hidden", name, esc(SECTION_TITLE[name]), count))
 
     hint = "<p class=\"hint\" data-nosection%s>出す節が1つも選ばれていません（設定の sections）。</p>" % (" hidden" if order else "")
     if not rooms_data["rooms"]:
@@ -350,23 +396,24 @@ def render(loaded, rooms_data, now):
         foot.append("<p class=\"warn\">読めなかった記録が %d本あります（その記録は、ファイルの更新時刻を「最後に動いた日時」に使っています）。</p>" % unreadable)
     else:
         foot.append("<p>読めなかった記録は 0本です。</p>")
-    if left_out:
+    # 載せていない部屋の数。30日より前の部屋の数は「止まっている部屋」の節の終わりに出すので、
+    # その節を出している間は、ここでは言わない（同じ事を2回言わない）。節を出さない時に見える行を別に置く
+    others = left_out - left["older"]
+    if others:
         reasons = []
-        if left["older"]:
-            reasons.append("%d日より前に動いた部屋" % SHOW_DAYS)
-        if left_out - left["older"] - left["temp"]:
+        if others - left["temp"]:
             reasons.append("設定で外した部屋")
         if left["temp"]:
             reasons.append("一時フォルダの下の部屋")
-        foot.append("<p>ほかに %d部屋あります（%s）。ここには載せていません。</p>" % (left_out, "・".join(reasons)))
+        foot.append("<p>ほかに %d部屋あります（%s）。ここには載せていません。</p>" % (others, "・".join(reasons)))
+    if left["older"]:
+        foot.append("<p data-older-foot%s>%s</p>" % (" hidden" if "stalled" in order else "", esc(older_text(left["older"]))))
     foot.append("<p data-screen-note hidden></p>")
     foot.append("<p>GlanceNow %s</p>" % esc(VERSION))
 
     body = (
         "<div class=\"wrap\">"
         "<header class=\"top\"><h1>GlanceNow</h1><ul class=\"stats\">"
-        "<li><b data-count=\"rooms\">%d</b>部屋</li>"
-        "<li class=\"%s\" data-stat=\"waiting\"><b data-count=\"waiting\">%d</b>判断待ち</li>"
         "<li>作った日時 %s</li>"
         "<li><button type=\"button\" class=\"btn\" data-tune-open hidden>変える</button></li>"
         "</ul></header>"
@@ -376,7 +423,7 @@ def render(loaded, rooms_data, now):
         "<footer>%s</footer>"
         "</div>"
     ) % (
-        len(shown), "has-wait" if waiting_count else "", waiting_count, time_tag(now, now),
+        time_tag(now, now),
         notice_html(loaded), hint, "".join(jump), "".join(blocks), "".join(foot),
     )
 

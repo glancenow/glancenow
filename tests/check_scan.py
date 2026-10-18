@@ -186,6 +186,69 @@ def main():
           len(others) == 2 and all(item.get("async") is True for item in others),
           repr([(item.get("async"), item.get("timeout")) for item in others]))
 
+    # --- 0.1.4：場所の無い記録をまとめる・人が打っていない文を除く・1つ前に頼んだ文 ---
+    second_work = work / "second"
+    os.environ["CLAUDE_CONFIG_DIR"] = str(second_work / "claude_config")
+    os.environ["GLANCENOW_HOME"] = str(second_work / "home")
+    env2 = dict(os.environ, PYTHONIOENCODING="utf-8")
+    projects = second_work / "claude_config" / "projects"
+    now = int(__import__("time").time())
+    dup_path = make_dummy.BASE + make_dummy.SEP + "dup-room"
+    dup_folder = scan.encode_path(dup_path)
+    notice = "<task-notification> <task-id>b7na2</task-id> <status>completed</status> </task-notification>"
+    make_dummy.write_record(projects / dup_folder, "0001.jsonl", [
+        make_dummy.user("ログインの所を直して", now - 300, dup_path),
+        make_dummy.user("再開", now - 200, dup_path),
+        make_dummy.last_prompt("再開"),
+        make_dummy.user(notice, now - 100, dup_path),
+        make_dummy.last_prompt(notice),
+    ], now - 100)
+    make_dummy.write_record(projects / dup_folder, "0002.jsonl", [
+        make_dummy.user("場所の書かれていない記録", now - 5000),
+        make_dummy.assistant("返事", now - 4990),
+    ], now - 4990)
+    paste_path = make_dummy.BASE + make_dummy.SEP + "paste-room"
+    make_dummy.write_record(projects / scan.encode_path(paste_path), "0001.jsonl", [
+        make_dummy.user('<pasted_content id="3127">貼った文の中身</pasted_content> これを直して', now - 50, paste_path),
+        make_dummy.last_prompt('<pasted_content id="3127">貼った文の中身</pasted_content> これを直して'),
+    ], now - 50)
+    resume_path = make_dummy.BASE + make_dummy.SEP + "resume-room"
+    make_dummy.write_record(projects / scan.encode_path(resume_path), "0001.jsonl", [
+        make_dummy.user("請求書の番号を自動で振るようにして", now - 9000, resume_path),
+    ], now - 9000)
+    make_dummy.write_record(projects / scan.encode_path(resume_path), "0002.jsonl", [
+        make_dummy.user("再開", now - 30, resume_path),
+    ], now - 30)
+    # 前の版が、場所の無い記録を別の部屋として rooms.json に控えていた形
+    lost_key = rooms.project_id(dup_folder)
+    rooms.update(lambda data: data["rooms"].update({lost_key: {"id": lost_key, "name": dup_folder, "path": "",
+                                                               "project": dup_folder, "last_active": now - 5000}}))
+    scan.scan()
+    data = json.loads((second_work / "home" / "rooms.json").read_text(encoding="utf-8"))["rooms"]
+    dup = data.get(rooms.room_id(dup_path), {})
+    check("場所の書かれていない記録は、同じ記録のフォルダの部屋にまとめる（同じ部屋が2つ出ない）",
+          len(data) == 3 and lost_key not in data and all(room.get("path") for room in data.values()), sorted(data))
+    resumed = data.get(rooms.room_id(resume_path), {})
+    check("新しい会話の最初の短い合図は、1つ前の会話で最後に頼んだ文を「1つ前に頼んだ文」にする",
+          resumed.get("last_prompt") == "再開" and resumed.get("prev_prompt") == "請求書の番号を自動で振るようにして", repr(resumed))
+    check("裏の作業の知らせは「最後に頼んだ文」に数えない", dup.get("last_prompt") == "再開", repr(dup.get("last_prompt")))
+    check("1つ前に頼んだ文を控える", dup.get("prev_prompt") == "ログインの所を直して", repr(dup.get("prev_prompt")))
+    check("貼り付けた文の印は外し、中身を出す",
+          data.get(rooms.room_id(paste_path), {}).get("last_prompt") == "貼った文の中身 これを直して",
+          repr(data.get(rooms.room_id(paste_path), {}).get("last_prompt")))
+    dup_transcript = projects / dup_folder / "0001.jsonl"
+
+    def prompt_hook(text):
+        payload = {"hook_event_name": "UserPromptSubmit", "cwd": dup_path, "transcript_path": str(dup_transcript), "prompt": text}
+        subprocess.run(hook, env=env2, input=json.dumps(payload, ensure_ascii=False).encode("utf-8"), capture_output=True)
+        return json.loads((second_work / "home" / "rooms.json").read_text(encoding="utf-8"))["rooms"][rooms.room_id(dup_path)]
+
+    after = prompt_hook(notice)
+    check("フックに来た裏の作業の知らせも、頼んだ文に数えない", after.get("last_prompt") == "再開", repr(after.get("last_prompt")))
+    after = prompt_hook("新しい頼み")
+    check("フックで新しい文が来たら、前の文が「1つ前に頼んだ文」になる",
+          after.get("last_prompt") == "新しい頼み" and after.get("prev_prompt") == "再開", repr(after))
+
     shutil.rmtree(work, ignore_errors=True)
     passed = sum(results)
     print("\n%d / %d が合いました" % (passed, len(results)))

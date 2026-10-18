@@ -124,3 +124,24 @@ def clean_text(text, limit=300):
         return ""
     value = " ".join(text.split())
     return value[:limit]
+
+
+# 「最後に頼んだ文」がこの字数より短い時は、1つ前に頼んだ文も並べる（「再開」「押した」などの合図）
+SHORT_PROMPT = 10
+
+# 貼り付けた文の印（中身は人が貼った文なので残し、印だけを外す）
+_PASTED_TAG = re.compile(r"</?pasted_content\b[^>]*>")
+
+
+def prompt_text(text):
+    """「最後に頼んだ文」として出せる形にする。人が打った文でなければ空の文字。
+
+    貼り付けた文の印は外して中身を残す。印を外した後も < で始まる物
+    （裏で走った作業の知らせ・コマンドの包みなど、自動で入る文）は、人が打った文として数えない。
+    """
+    if not isinstance(text, str):
+        return ""
+    value = clean_text(_PASTED_TAG.sub(" ", text))
+    if value.startswith("<") or value.startswith("[Request interrupted"):
+        return ""
+    return value

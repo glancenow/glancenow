@@ -193,8 +193,16 @@ def main():
     run("config-set", "rooms.names.shop-site=", "rooms.hide=")
     rooms_now = config.load()["config"]["rooms"]
     check("値を空にする → 名前を外す・一覧を空にする", rooms_now["names"] == {} and rooms_now["hide"] == [], rooms_now)
+    code, said = run("config-set", "rooms.recent_days=7")
+    check("rooms.recent_days に数を書ける（数として入る）", code == 0 and config.load()["config"]["rooms"]["recent_days"] == 7
+          and '"recent_days": 7' in config_text(), said)
+    run("config-set", "rooms.recent_days=2")
 
     kept = config_text()
+    for value in ("0", "31", "みっか"):
+        code, said = run("config-set", "rooms.recent_days=" + value)
+        check("rooms.recent_days=%s → exit 1・範囲を知らせる・書き換えない" % value, code == 1 and "1 から 30 までの数" in said
+              and config_text() == kept, said)
     code, said = run("config-set", "look.theme=midnight")
     check("書けない値 → exit 1・理由を出す・設定ファイルは書き換えない", code == 1 and "auto／light／dark" in said and "書き換えていません" in said
           and config_text() == kept, said)

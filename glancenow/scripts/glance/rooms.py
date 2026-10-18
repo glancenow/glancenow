@@ -148,13 +148,15 @@ def touch(path, prompt=None, now=None, exact=False):
             data["rooms"][key] = room
         room["path"] = path
         room["name"] = room_name(path)
-        text = util.clean_text(prompt) if prompt else ""
+        text = util.prompt_text(prompt) if prompt else ""  # 裏の作業の知らせなどは、頼んだ文に数えない
         new_prompt = bool(text) and text != room.get("last_prompt")
         old = room.get("last_active") or 0
         if exact or new_prompt or now - old >= ACTIVE_STEP:
             room["last_active"] = now
             room["last_active_from"] = "hook"
         if text and (new_prompt or room.get("last_prompt_from") != "hook"):
+            if new_prompt and room.get("last_prompt"):
+                room["prev_prompt"] = room["last_prompt"]
             room["last_prompt"] = text
             room["last_prompt_at"] = now
             room["last_prompt_from"] = "hook"

@@ -86,8 +86,7 @@ html[data-off~="status"] .i-status,
 html[data-off~="next"] .i-next,
 html[data-off~="waiting"] .i-waiting,
 html[data-off~="last_active"] .i-last_active,
-html[data-off~="last_prompt"] .i-last_prompt,
-html[data-off~="status"][data-off~="next"] .norecord { display: none; }
+html[data-off~="last_prompt"] .i-last_prompt { display: none; }
 
 /* ボタン */
 .btn {
@@ -108,13 +107,11 @@ html[data-off~="status"][data-off~="next"] .norecord { display: none; }
   font-weight: 700;
 }
 
-/* いちばん上：名前と数 */
+/* いちばん上：名前・作った日時・「変える」（数は、すぐ下の節の丸ボタンに出す） */
 .top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
 .top h1 { margin: 0; font-size: 1.35rem; letter-spacing: 0.01em; }
 .stats { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 22px; margin: 0; padding: 0; list-style: none; }
 .stats li { display: flex; align-items: baseline; gap: 6px; font-size: 0.82rem; color: var(--muted); }
-.stats b { font-size: 1.25rem; color: var(--text); font-variant-numeric: tabular-nums; }
-.stats .has-wait b { color: var(--wait); }
 
 /* 知らせ */
 .notice {
@@ -146,6 +143,8 @@ html[data-off~="status"][data-off~="next"] .norecord { display: none; }
 }
 .jump a:hover { border-color: var(--accent); }
 .jump .n { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
+.jump .has-wait a { border-color: var(--wait); color: var(--wait); font-weight: 700; }
+.jump .has-wait .n { color: var(--wait); }
 
 /* 節 */
 .block { margin-top: 34px; }
@@ -206,12 +205,16 @@ time .abs { margin-left: 6px; color: var(--muted); font-size: 0.92em; }
 .facts .v { min-width: 0; }
 .facts .wait { color: var(--wait); font-weight: 700; }
 .facts .prompt { color: var(--muted); }
-.card .norecord { margin: 6px 0 0; color: var(--muted); font-size: 0.8rem; }
+.facts .prev { margin-left: 8px; font-size: 0.92em; opacity: 0.85; }
+.card .open { margin-top: 10px; }
+
+/* 「続きから開く」 */
+.btn.open.done { border-color: var(--active); color: var(--active); }
 
 /* 1行の一覧（列の場所を決めておく＝項目を隠しても、ほかの列がずれない） */
 .rows { margin: 12px 0 0; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
 .rows li {
-  display: grid; grid-template-columns: minmax(8em, 1.3fr) 8.2em 11.5em minmax(0, 2.4fr); gap: 4px 14px; align-items: baseline;
+  display: grid; grid-template-columns: minmax(8em, 1.3fr) 8.2em 11.5em minmax(0, 2.4fr) 8.6em 7.6em; gap: 4px 14px; align-items: baseline;
   padding: 9px 14px;
   font-size: 0.88rem;
 }
@@ -220,7 +223,8 @@ time .abs { margin-left: 6px; color: var(--muted); font-size: 0.92em; }
 .rows .chip { grid-area: 1 / 2; justify-self: start; }
 .rows .when { grid-area: 1 / 3; }
 .rows .next { grid-area: 1 / 4; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rows .next .wait { color: var(--wait); font-weight: 700; margin-right: 8px; }
+.rows .flag { grid-area: 1 / 5; justify-self: start; color: var(--wait); font-size: 0.78rem; font-weight: 700; white-space: nowrap; }
+.rows .open { grid-area: 1 / 6; justify-self: end; white-space: nowrap; }
 
 footer { margin-top: 44px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 0.78rem; color: var(--muted); }
 footer p { margin: 2px 0; }
@@ -278,6 +282,7 @@ footer .warn { color: var(--wait); font-weight: 700; }
   .rows .when, .rows .next { grid-area: auto / 1 / auto / -1; }
   .rows .when { font-size: 0.8rem; }
   .rows .next { white-space: normal; }
+  .rows .flag, .rows .open { grid-area: auto / 1 / auto / -1; justify-self: start; }
   .cards { grid-template-columns: 1fr; }
   .tune { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 62vh; }
   html[data-tuning] .wrap { padding-bottom: 66vh; }

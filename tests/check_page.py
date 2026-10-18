@@ -46,7 +46,7 @@ def main():
     entry = [sys.executable, str(SCRIPTS / "glancenow.py")]
 
     import make_dummy
-    from glance import build, config, refresh, rooms, scan, state
+    from glance import build, config, records, refresh, rooms, scan, state
 
     expected = make_dummy.build(dummy)
     first = expected["rooms"][0]
@@ -107,7 +107,9 @@ def main():
     data = rooms.load()
     now = time.time()
     in_30 = [room for room in data["rooms"].values() if now - room["last_active"] <= 30 * 86400]
-    in_7 = [room for room in in_30 if now - room["last_active"] <= 7 * 86400]
+    # 「最近動いた部屋」のカード＝この2日に動いた部屋のうち、区切りの記録がある部屋（0.1.4 から）
+    in_2 = [room for room in in_30 if now - room["last_active"] <= 2 * 86400 and records.latest(room["id"])]
+    in_2_all = [room for room in in_30 if now - room["last_active"] <= 2 * 86400]
 
     def block(name, source=None):
         found = re.search(r'<section class="block" id="%s"(?: hidden)?>(.*?)</section>' % name, source or html(), re.S)
@@ -129,11 +131,31 @@ def main():
 
     check("節が4つ、標準の順に出る", shown_sections(text) == ["waiting", "recent", "all", "stalled"], shown_sections(text))
     check("「全部の部屋」の行の数＝30日以内の部屋の数（%d）" % len(in_30), members("all") == len(in_30), members("all"))
-    check("「最近動いた部屋」のカードの数＝7日以内の部屋の数（%d）" % len(in_7),
-          block("recent").count('<article class="card"') == len(in_7) == members("recent"), members("recent"))
+    check("「最近動いた部屋」のカードの数＝2日以内に動いた、区切りの記録がある部屋の数（%d／動いた部屋 %d）" % (len(in_2), len(in_2_all)),
+          0 < len(in_2) and block("recent").count('<article class="card"') == len(in_2) == members("recent"),
+          members("recent"))
+    check("カードに「区切りの記録が、まだありません」は出ない（記録の無い部屋はカードにしない）", "区切りの記録が、まだありません" not in block("recent"))
     check("「判断待ち」に2件", members("waiting") == 2, members("waiting"))
-    check("いちばん上に、部屋の数と判断待ちの数", '<b data-count="rooms">%d</b>部屋' % len(in_30) in text and '<b data-count="waiting">2</b>判断待ち' in text)
-    check("載せていない部屋の数と訳を下に書く", "ほかに %d部屋あります（30日より前に動いた部屋）。" % (len(data["rooms"]) - len(in_30)) in text)
+    check("いちばん上に数を出さない（数は節の丸ボタンに出す）", 'data-count=' not in text and 'data-stat=' not in text)
+    check("判断待ちがある時は、その丸ボタンに印", '<li data-jump="waiting" class="has-wait">' in text)
+    check("30日より前の部屋の数は、画面の終わりで2回言わない（節を出している間は隠す）",
+          not re.search(r"ほかに \d+部屋", text.split("<footer>", 1)[1]) and re.search(r'<p data-older-foot hidden>このほかに、30日より前に止まった部屋が 2 つあります。</p>', text))
+    rows = re.findall(r'<li data-room="[^"]+">.*?</li>', block("all"), re.S)
+    waiting_rows = [item for item in rows if 'class="flag i-waiting"' in item]
+    check("表の判断待ちの印は、次の一手の文と別の列（%d行）" % len(waiting_rows), len(waiting_rows) == 2
+          and all("判断待ち" not in re.search(r'<span class="next">(.*?)</span>(?=<span class="flag)', item, re.S).group(1) for item in waiting_rows))
+    opens = re.findall(r'data-open="([^"]*)"', block("all"))
+    check("場所の分かる部屋には「続きから開く」がある（hidden で入れ、JavaScript が出す）",
+          len(opens) == len([room for room in in_30 if room.get("path")]) and len(opens) < members("all")
+          and all("claude --continue" in line for line in opens)
+          and 'class="btn small open" data-open=' in text and '>続きから開く</button>' in text and " hidden>続きから開く" in text,
+          "%d / %d" % (len(opens), members("all")))
+    check("「続きから開く」の行は、部屋の場所に移ってから続きを始める", build.continue_line("") == ""
+          and build.continue_line(make_dummy.BASE + make_dummy.SEP + "shop-site").startswith("cd ")
+          and build.continue_line(make_dummy.BASE + make_dummy.SEP + "shop-site").endswith("claude --continue"))
+    short = build.prompt_html({"last_prompt": "再開", "prev_prompt": "トップページの見出しを直して"})
+    long_one = build.prompt_html({"last_prompt": "トップページの見出しを直して", "prev_prompt": "前の文"})
+    check("「最後に頼んだ文」が短い合図の時は、1つ前に頼んだ文も並べる", "← トップページの見出しを直して" in short and "前の文" not in long_one, short)
     check("読めなかった記録の本数を下に書く", "読めなかった記録が 1本あります" in text)
     check("状態は 形＋文字 で出る", '<span class="chip active i-status"><i aria-hidden="true">●</i>動かしている</span>' in text
           and '<i aria-hidden="true">◐</i>維持だけ' in text and '<i aria-hidden="true">－</i>記録なし' in text)
@@ -233,6 +255,16 @@ def main():
     config.config_file().write_text(good, encoding="utf-8")
 
     # ---------- 設定で変えられる物 ----------
+    # rooms.recent_days：日数を延ばすと、記録のある部屋だけがカードに増える（記録の無い部屋は増えない）
+    write_config(lambda data: data["rooms"].update(recent_days=7))
+    rebuild()
+    in_7 = [room for room in in_30 if now - room["last_active"] <= 7 * 86400 and records.latest(room["id"])]
+    in_7_bare = [room for room in in_30 if now - room["last_active"] <= 7 * 86400 and not records.latest(room["id"])]
+    check("rooms.recent_days=7 → この7日の、記録がある部屋がカードになる（%d・記録の無い部屋 %d はカードにしない）" % (len(in_7), len(in_7_bare)),
+          len(in_7) > len(in_2) and in_7_bare and members("recent") == len(in_7)
+          and all(('data-room="%s"' % room["id"]) not in block("recent") for room in in_7_bare)
+          and "この7日のあいだに動いた" in block("recent"), members("recent"))
+    write_config(lambda data: data["rooms"].update(recent_days=2))
     write_config(lambda data: data["rooms"].update(show="all"))
     rebuild()
     check("rooms.show=all → 全部の部屋が載る（%d）" % len(data["rooms"]), members("all") == len(data["rooms"]), members("all"))
@@ -278,7 +310,9 @@ def main():
     hidden_blocks = re.findall(r'<section class="block" id="(\w+)" hidden>', html())
     check("出さない節も中には入れてある（画面から出せるように hidden で）", sorted(hidden_blocks) == ["recent", "stalled"]
           and html().index('id="waiting"') < html().index('id="recent" hidden'), hidden_blocks)
-    check("節への移動も、出す節だけ", re.findall(r'<li data-jump="(\w+)">', html()) == ["all", "waiting"])
+    check("節への移動も、出す節だけ", re.findall(r'<li data-jump="(\w+)"(?: class="has-wait")?>', html()) == ["all", "waiting"])
+    check("「止まっている部屋」を出さない時は、30日より前の部屋の数を画面の終わりに出す",
+          '<p data-older-foot>このほかに、30日より前に止まった部屋が 2 つあります。</p>' in html())
     check("「止まっている部屋」を出さない時は、30日より前の部屋の数の行も、その節と一緒に隠れる", html().count('<p class="older">') == 1
           and '<p class="older">' in block("stalled") and 'id="stalled" hidden>' in html())
     write_config(lambda data: (data.update(sections=["recent"]), data["items"].update(status=False, next=False, last_active=False)))

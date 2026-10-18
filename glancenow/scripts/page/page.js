@@ -134,6 +134,9 @@
     });
     var none = document.querySelector("[data-nosection]");
     if (none) none.hidden = order.length > 0;
+    // 30日より前の部屋の数は「止まっている部屋」の節の終わりに出す。その節を出さない時だけ、画面の終わりに出す
+    var olderFoot = document.querySelector("[data-older-foot]");
+    if (olderFoot) olderFoot.hidden = order.indexOf("stalled") >= 0;
   }
 
   function applyRooms() {
@@ -167,10 +170,9 @@
       block.querySelector(".n").textContent = count;
       var link = document.querySelector('[data-jump="' + block.id + '"] .n');
       if (link) link.textContent = count;
-      if (block.id === "all") document.querySelector('[data-count="rooms"]').textContent = count;
       if (block.id === "waiting") {
-        document.querySelector('[data-count="waiting"]').textContent = count;
-        document.querySelector('[data-stat="waiting"]').className = count ? "has-wait" : "";
+        var jumpItem = document.querySelector('[data-jump="waiting"]');
+        if (jumpItem) jumpItem.classList.toggle("has-wait", count > 0);
       }
     }
     var note = document.querySelector("[data-screen-note]");
@@ -374,7 +376,7 @@
     var top = body.scrollTop;
     while (body.firstChild) body.removeChild(body.firstChild);
     body.appendChild(el("p", "tune-note", canSave
-      ? "ここで変えた事は、このブラウザの中だけに残ります。設定ファイルの同じまとまりを書き換えると、設定ファイルの方が出ます。"
+      ? "ここで変えた事は、このブラウザだけに残ります。AI に頼んで変えた設定とぶつかった時は、AI に頼んだ方が出ます。"
       : "このブラウザでは保存できないので、読み込み直すと元に戻ります。"));
     body.appendChild(lookGroup());
     body.appendChild(itemsGroup());
@@ -437,6 +439,51 @@
     top.parentNode.insertBefore(box, top.nextSibling);
   }
 
+  // ---------- 「続きから開く」（その部屋で会話の続きを始める行をコピーする） ----------
+
+  function copyText(text, done) {
+    function fallback() {
+      var area = el("textarea", "");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (error) { ok = false; }
+      document.body.removeChild(area);
+      done(ok);
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, fallback);
+    } else {
+      fallback();
+    }
+  }
+
+  function setupOpen() {
+    var buttons = document.querySelectorAll("[data-open]");
+    for (var i = 0; i < buttons.length; i++) {
+      (function (node) {
+        var label = node.textContent;
+        node.hidden = false;
+        node.addEventListener("click", function () {
+          var line = node.getAttribute("data-open");
+          copyText(line, function (ok) {
+            if (!ok) {
+              window.prompt("この行をコピーして、端末に貼ってください。", line);
+              return;
+            }
+            node.textContent = "コピーしました";
+            node.classList.add("done");
+            setTimeout(function () { node.textContent = label; node.classList.remove("done"); }, 2000);
+          });
+        });
+      })(buttons[i]);
+    }
+  }
+
   // ---------- 「◯日前」 ----------
 
   function ago(seconds) {
@@ -475,6 +522,7 @@
     applySections();
     applyRooms();
     showDropped();
+    setupOpen();
     tick();
     opener = document.querySelector("[data-tune-open]");
     opener.hidden = false;

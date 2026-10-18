@@ -18,6 +18,7 @@ SECTIONS = ("waiting", "recent", "all", "stalled")
 THEMES = ("auto", "light", "dark")
 FONT_SIZES = ("small", "normal", "large")
 ACCENTS = ("blue", "green", "orange", "purple", "pink", "gray")
+RECENT_DAYS_MIN, RECENT_DAYS_MAX = 1, 30  # 節「最近動いた部屋」に入れる日数の範囲
 
 DEFAULT = {
     "version": 1,
@@ -26,6 +27,7 @@ DEFAULT = {
         "list": [],
         "hide": [],
         "show_temp": False,
+        "recent_days": 2,
         "order": "last_active",
         "manual_order": [],
         "names": {},
@@ -170,6 +172,13 @@ def parse(raw):
                 result["rooms"]["show_temp"] = rooms["show_temp"]
             else:
                 errors.append("%srooms.show_temp は true か false で書きます" % where("show_temp"))
+        if "recent_days" in rooms:
+            days = rooms["recent_days"]
+            if isinstance(days, int) and not isinstance(days, bool) and RECENT_DAYS_MIN <= days <= RECENT_DAYS_MAX:
+                result["rooms"]["recent_days"] = days
+            else:
+                errors.append("%srooms.recent_days は %d から %d までの数で書きます（今は %s）" % (
+                    where("recent_days"), RECENT_DAYS_MIN, RECENT_DAYS_MAX, json.dumps(days, ensure_ascii=False)))
         if "names" in rooms:
             names = rooms["names"]
             if isinstance(names, dict) and all(isinstance(v, str) for v in names.values()):
@@ -329,6 +338,8 @@ def set_values(pairs):
                 data[group][name] = _as_list(text)
             elif isinstance(DEFAULT[group][name], bool) and text.lower() in ("true", "false"):
                 data[group][name] = text.lower() == "true"
+            elif type(DEFAULT[group][name]) is int and re.fullmatch(r"-?\d+", text):
+                data[group][name] = int(text)
             elif isinstance(DEFAULT[group][name], dict):
                 try:
                     data[group][name] = json.loads(text)

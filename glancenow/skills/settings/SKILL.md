@@ -47,6 +47,7 @@ allowed-tools:
 | shop-site を「お店のサイト」と出して | `rooms.names.shop-site=お店のサイト` |
 | 全部の部屋を載せて | `rooms.show=all` |
 | 一時フォルダの部屋も載せて | `rooms.show_temp=true` |
+| 最近動いた部屋を、この7日にして | `rooms.recent_days=7`（1 から 30 まで） |
 | 最後に頼んだ文は出さないで | `items.last_prompt=false` |
 | 自分の wrap-up のスキルの後にも、1行を書かせて | `checkpoint.after_skills=区切り,wrap-up`（今の一覧に足した全体） |
 | 区切りの後に、1行を書かせないで | `checkpoint.after_skills=`（空にする） |
