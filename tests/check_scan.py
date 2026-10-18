@@ -228,6 +228,12 @@ def main():
     dup = data.get(rooms.room_id(dup_path), {})
     check("場所の書かれていない記録は、同じ記録のフォルダの部屋にまとめる（同じ部屋が2つ出ない）",
           len(data) == 3 and lost_key not in data and all(room.get("path") for room in data.values()), sorted(data))
+    stale_key = rooms.project_id(scan.encode_path(paste_path))
+    rooms.update(lambda stored: stored["rooms"].update({stale_key: {"id": stale_key, "name": "x", "path": "",
+                                                                   "project": scan.encode_path(paste_path), "last_active": now - 9}}))
+    scan.scan()
+    check("前の版が控えた場所の無い部屋は、そのフォルダに場所の分かる部屋があれば消す",
+          stale_key not in json.loads((second_work / "home" / "rooms.json").read_text(encoding="utf-8"))["rooms"])
     resumed = data.get(rooms.room_id(resume_path), {})
     check("新しい会話の最初の短い合図は、1つ前の会話で最後に頼んだ文を「1つ前に頼んだ文」にする",
           resumed.get("last_prompt") == "再開" and resumed.get("prev_prompt") == "請求書の番号を自動で振るようにして", repr(resumed))

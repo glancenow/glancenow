@@ -258,9 +258,16 @@ def scan(keep_prompts=True):
     now = time.time()
     stats["rooms"] = len(found)
 
+    # 場所の分かる部屋がある記録のフォルダ（前の版が、場所の無い別の部屋として控えた物を消すため）
+    covered = {hit["project"] for hit in found.values() if hit["path"]}
+
     def change(data):
         for key in merged:
             data["rooms"].pop(key, None)  # 前の版が別の部屋として控えた物も消す
+        for key in [key for key, room in data["rooms"].items()
+                    if key not in found and not room.get("path") and room.get("project") in covered]:
+            # 前の版で場所の無い部屋になった記録から、今は場所が読める（長く読むようになった）時も消す
+            data["rooms"].pop(key, None)
         for key, room in data["rooms"].items():
             if key not in found and room.get("project"):
                 room["record_gone"] = True  # 記録は消えたが、部屋は残す
