@@ -1,17 +1,17 @@
 {
-  "description": "GlanceNow：会話の始まり・質問を送った時・返事が終わった時に、画面の元データを新しくする。「区切り」のスキルが動いた返事では、終わりに部屋の1行を書かせる",
+  "description": "GlanceNow：会話の始まり・質問を送った時・返事が終わった時に、画面の元データを新しくする。「区切り」のスキルが動いた返事では、終わりに部屋の1行を書かせる。Python は、最初に動いた時に覚えた実体の場所を直接呼ぶ（無ければ python3 → python）",
   "hooks": {
     "SessionStart": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook 2>/dev/null || python \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook 2>/dev/null || true",
+            "command": "p=; read -r p 2>/dev/null < \"${GLANCENOW_HOME:-${USERPROFILE:-$HOME}/.glancenow}/python\"; if [ -x \"$p\" ]; then \"$p\" \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook 2>/dev/null; else python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook 2>/dev/null || python \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook 2>/dev/null; fi; true",
             "timeout": 60
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook scan 2>/dev/null || python \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook scan 2>/dev/null || true",
+            "command": "p=; read -r p 2>/dev/null < \"${GLANCENOW_HOME:-${USERPROFILE:-$HOME}/.glancenow}/python\"; if [ -x \"$p\" ]; then \"$p\" \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook scan 2>/dev/null; else python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook scan 2>/dev/null || python \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook scan 2>/dev/null; fi; true",
             "timeout": 300,
             "async": true
           }
@@ -23,7 +23,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook 2>/dev/null || python \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook 2>/dev/null || true",
+            "command": "p=; read -r p 2>/dev/null < \"${GLANCENOW_HOME:-${USERPROFILE:-$HOME}/.glancenow}/python\"; if [ -x \"$p\" ]; then \"$p\" \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook 2>/dev/null; else python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook 2>/dev/null || python \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook 2>/dev/null; fi; true",
             "timeout": 30,
             "async": true
           }
@@ -36,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook skill 2>/dev/null || python \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook skill 2>/dev/null || true",
+            "command": "p=; read -r p 2>/dev/null < \"${GLANCENOW_HOME:-${USERPROFILE:-$HOME}/.glancenow}/python\"; if [ -x \"$p\" ]; then \"$p\" \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook skill 2>/dev/null; else python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook skill 2>/dev/null || python \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook skill 2>/dev/null; fi; true",
             "timeout": 30,
             "async": true
           }
@@ -48,13 +48,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook 2>/dev/null || python \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook 2>/dev/null || true",
+            "command": "p=; read -r p 2>/dev/null < \"${GLANCENOW_HOME:-${USERPROFILE:-$HOME}/.glancenow}/python\"; if [ -x \"$p\" ]; then \"$p\" \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook 2>/dev/null; else python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook 2>/dev/null || python \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook 2>/dev/null; fi; true",
             "timeout": 30,
             "async": true
           },
           {
             "type": "command",
-            "command": "for f in \"${GLANCENOW_HOME:-${USERPROFILE:-$HOME}/.glancenow}/pending/\"*; do [ -e \"$f\" ] && { python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook stopcheck 2>/dev/null || python \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook stopcheck 2>/dev/null; }; break; done; true",
+            "command": "for f in \"${GLANCENOW_HOME:-${USERPROFILE:-$HOME}/.glancenow}/pending/\"*; do [ -e \"$f\" ] && { p=; read -r p 2>/dev/null < \"${GLANCENOW_HOME:-${USERPROFILE:-$HOME}/.glancenow}/python\"; if [ -x \"$p\" ]; then \"$p\" \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook stopcheck 2>/dev/null; else python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook stopcheck 2>/dev/null || python \"${CLAUDE_PLUGIN_ROOT}/scripts/glancenow.py\" hook stopcheck 2>/dev/null; fi; }; break; done; true",
             "timeout": 30
           }
         ]

@@ -299,7 +299,16 @@ def main():
     pending.clear(room_key)
 
     hooks = json.loads((PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
-    post = [(group.get("matcher"), item) for group in hooks.get("PostToolUse", []) for item in group["hooks"]]
+    expect_place = sys.executable.replace("\\", "/") if os.name == "nt" else sys.executable
+    check("フックが動くと、Python の実体の場所を home の下の python に1行で覚える",
+          (home / "python").exists() and (home / "python").read_text(encoding="utf-8").strip() == expect_place,
+          (home / "python").read_text(encoding="utf-8") if (home / "python").exists() else "無い")
+    commands = [item["command"] for groups in hooks.values() for group in groups for item in group["hooks"]]
+    check("hooks.json：6つのコマンドすべてが、覚えた場所を先に見て、無ければ python3 → python の順",
+          len(commands) == 6 and all('read -r p 2>/dev/null < "${GLANCENOW_HOME:-${USERPROFILE:-$HOME}/.glancenow}/python"' in c
+                                     and '[ -x "$p" ]' in c and "else python3 " in c and "|| python " in c
+                                     and c.endswith("true") for c in commands), len(commands))
+    post =[(group.get("matcher"), item) for group in hooks.get("PostToolUse", []) for item in group["hooks"]]
     stops = [item for group in hooks.get("Stop", []) for item in group["hooks"] if "stopcheck" in item["command"]]
     check("hooks.json：スキルの直後（matcher Skill）に hook skill・返事の終わりに止める形（async なし）の stopcheck",
           len(post) == 1 and post[0][0] == "Skill" and "hook skill" in post[0][1]["command"]
@@ -316,6 +325,28 @@ def main():
         busy = subprocess.run([shell, "-c", stops[0]["command"]], env=shell_env, input=sent, capture_output=True)
         check("印がある時は、同じコマンドで止める形の文が返る", busy.returncode == 0
               and json.loads(busy.stdout.decode("utf-8") or "{}").get("decision") == "block" and flags() == [], busy.stdout[:120])
+
+        # 覚えた Python の実体を直接呼ぶ（0.1.6）
+        remembered = home / "python"
+        prompt_cmd = hooks["UserPromptSubmit"][0]["hooks"][0]["command"]
+        sent = json.dumps({"hook_event_name": "UserPromptSubmit", "session_id": "s7", "cwd": first["path"],
+                           "prompt": "x"}).encode("utf-8")
+        rows_before = len(log_rows("hook"))
+        no_path = dict(shell_env, PATH="")
+        direct = subprocess.run([shell, "-c", prompt_cmd], env=no_path, input=sent, capture_output=True)
+        check("python3・python が PATH に無くても、覚えた場所で動く", direct.returncode == 0
+              and len(log_rows("hook")) == rows_before + 1, (direct.returncode, direct.stderr[:120]))
+        remembered.write_text("/no/such/python\n", encoding="utf-8")
+        rows_before = len(log_rows("hook"))
+        fallback = subprocess.run([shell, "-c", prompt_cmd], env=shell_env, input=sent, capture_output=True)
+        check("覚えた場所が無い時は python3 → python の順で動き、場所を書き直す", fallback.returncode == 0
+              and len(log_rows("hook")) == rows_before + 1
+              and os.path.isfile(remembered.read_text(encoding="utf-8").strip()), remembered.read_text(encoding="utf-8"))
+        remembered.unlink()
+        rows_before = len(log_rows("hook"))
+        missing = subprocess.run([shell, "-c", prompt_cmd], env=shell_env, input=sent, capture_output=True)
+        check("覚えたファイルが無い時も動き、エラーの文を出さない", missing.returncode == 0 and missing.stderr == b""
+              and len(log_rows("hook")) == rows_before + 1 and remembered.exists(), missing.stderr[:120])
     else:
         print("（シェルが見つからないので、hooks.json のコマンドを走らせる2つは飛ばしました）")
 

@@ -87,8 +87,34 @@ def _drop_hidden_prompts():
     return scan.drop_prompts()
 
 
+def _remember_python():
+    """今動いている Python の実体の場所を、home の下の python に1行で覚える（変わった時だけ書く）。
+
+    hooks.json は、次からこの場所を直接呼ぶ。Windows の python3・python は別名で、
+    起動するたびに実体を探すので遅い（確かめた PC で 1回 0.4〜0.6秒）。書けない時は何もしない。
+    """
+    try:
+        place = sys.executable or ""
+        if not place or not os.path.isfile(place):
+            return "none"
+        if os.name == "nt":
+            place = place.replace("\\", "/")
+        target = paths.home() / "python"
+        try:
+            if target.read_text(encoding="utf-8").strip() == place:
+                return "same"
+        except OSError:
+            pass
+        paths.ensure_home()
+        util.write_text(target, place + "\n")
+        return "saved"
+    except Exception:
+        return "error"
+
+
 def cmd_hook(args):
     started = time.perf_counter()
+    python_mark = _remember_python()
     data = _read_hook_input()
     event = str(data.get("hook_event_name") or "")
     mode = args[0] if args else ""
@@ -140,6 +166,7 @@ def cmd_hook(args):
         cwd=str(data.get("cwd") or ""),
         room=room_path,
         done=done,
+        python_place=python_mark,
         home_env=paths.home_env(),
         python="%d.%d.%d" % sys.version_info[:3],
         sec=round(time.perf_counter() - started, 3),
